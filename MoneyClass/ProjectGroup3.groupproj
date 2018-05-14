@@ -1,0 +1,48 @@
+﻿	<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+		<PropertyGroup>
+			<ProjectGuid>{F35E0603-5B04-40A0-AA86-9EFEE7EC677F}</ProjectGuid>
+		</PropertyGroup>
+		<ItemGroup>
+			<Projects Include="MoneyProject.dproj">
+				<Dependencies/>
+			</Projects>
+			<Projects Include="Test\MoneyProjectTests.dproj">
+				<Dependencies/>
+			</Projects>
+		</ItemGroup>
+		<ProjectExtensions>
+			<Borland.Personality>Default.Personality.12</Borland.Personality>
+			<Borland.ProjectType/>
+			<BorlandProject>
+				<Default.Personality/>
+			</BorlandProject>
+		</ProjectExtensions>
+		<Target Name="MoneyProject">
+			<MSBuild Projects="MoneyProject.dproj"/>
+		</Target>
+		<Target Name="MoneyProject:Clean">
+			<MSBuild Projects="MoneyProject.dproj" Targets="Clean"/>
+		</Target>
+		<Target Name="MoneyProject:Make">
+			<MSBuild Projects="MoneyProject.dproj" Targets="Make"/>
+		</Target>
+		<Target Name="MoneyProjectTests">
+			<MSBuild Projects="Test\MoneyProjectTests.dproj"/>
+		</Target>
+		<Target Name="MoneyProjectTests:Clean">
+			<MSBuild Projects="Test\MoneyProjectTests.dproj" Targets="Clean"/>
+		</Target>
+		<Target Name="MoneyProjectTests:Make">
+			<MSBuild Projects="Test\MoneyProjectTests.dproj" Targets="Make"/>
+		</Target>
+		<Target Name="Build">
+			<CallTarget Targets="MoneyProject;MoneyProjectTests"/>
+		</Target>
+		<Target Name="Clean">
+			<CallTarget Targets="MoneyProject:Clean;MoneyProjectTests:Clean"/>
+		</Target>
+		<Target Name="Make">
+			<CallTarget Targets="MoneyProject:Make;MoneyProjectTests:Make"/>
+		</Target>
+		<Import Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')" Project="$(BDS)\Bin\CodeGear.Group.Targets"/>
+	</Project>
