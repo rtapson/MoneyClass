@@ -36,22 +36,20 @@ type
     function CentFactor: Int64;
     function CentFactorOf(const AFormatSettings : TFormatSettings): Int64;
     function SameCurrencyAs(const Other : IMoney): boolean;
+    class function RequireCurrencyCode(const ACurrencyCode : string): string;
     function NewMoney(Amount : Int64): IMoney;
     function GetAmount: Int64;
     function GetDecimalAmount: Currency;
     function GetCurrencyCode: string;
     function GetFormatSettings: TFormatSettings;
   public
-    constructor Create(Amount : Currency); overload;
-    constructor Create(Amount : Int64); overload;
-    constructor Create(Amount : Currency; FormatSettings : TFormatSettings); overload;
-    constructor Create(Amount : Int64; FormatSettings : TFormatSettings); overload;
     constructor Create(Amount : Currency; const ACurrencyCode : string; FormatSettings : TFormatSettings); overload;
     constructor Create(Amount : Int64; const ACurrencyCode : string; FormatSettings : TFormatSettings); overload;
     constructor Create(Other : IMoney); overload;
-    constructor ChangeCurrency(const FromMoney : IMoney; const ToFormatSettings : TFormatSettings; const ExchangeRate : Double; const AToCurrencyCode : string = '');
+    constructor ChangeCurrency(const FromMoney : IMoney; const ToFormatSettings : TFormatSettings; const ExchangeRate : Double; const AToCurrencyCode : string);
 
     class function FromLocale(Amount : Currency; ALocaleID : integer): IMoney;
+    class function FromDefaultLocale(Amount : Currency): IMoney;
     class function CurrencyCodeOfLocale(ALocaleID : integer): string;
 
     function ToString: string; override;
@@ -160,17 +158,10 @@ end;
 
 function TMoney.SameCurrencyAs(const Other : IMoney): boolean;
 begin
-  // An ISO 4217 code is authoritative when both sides carry one. It is the only
-  // thing that separates USD from CAD, which share the '$' symbol, two decimals
-  // and the same CurrencyFormat.
-  if (FCurrencyCode <> '') and (Other.CurrencyCode <> '') then
-    Exit(SameText(FCurrencyCode, Other.CurrencyCode));
-
-  // Money built through the constructors that take no code has nothing to
-  // compare, so fall back to symbol and scale. Still better than CurrencyFormat,
-  // which records only where the symbol sits relative to the number.
-  result := (Other.FormatSettings.CurrencyString = FFormatSettings.CurrencyString) and
-            (Other.FormatSettings.CurrencyDecimals = FFormatSettings.CurrencyDecimals);
+  // Every TMoney carries an ISO 4217 code, so the code alone decides. This is
+  // what separates USD from CAD, which share the '$' symbol, two decimals and
+  // the same CurrencyFormat.
+  result := SameText(FCurrencyCode, Other.CurrencyCode);
 end;
 
 constructor TMoney.ChangeCurrency(const FromMoney: IMoney; const ToFormatSettings: TFormatSettings; const ExchangeRate: Double; const AToCurrencyCode: string);
@@ -178,7 +169,7 @@ var
   FromFactor, ToFactor : Int64;
 begin
   FFormatSettings := ToFormatSettings;
-  FCurrencyCode := AToCurrencyCode;
+  FCurrencyCode := RequireCurrencyCode(AToCurrencyCode);
   FromFactor := CentFactorOf(FromMoney.FormatSettings);
   ToFactor := CentFactorOf(ToFormatSettings);
   // Rescale between the two minor-unit scales in the same step as the rate so
@@ -187,36 +178,24 @@ begin
   FAmount := Round(FromMoney.Amount * ExchangeRate * ToFactor / FromFactor);
 end;
 
-constructor TMoney.Create(Amount: Currency);
-begin
-  FFormatSettings := TFormatSettings.Create;
-  FAmount := Round(Amount * CentFactor);
-end;
-
-constructor TMoney.Create(Amount: Int64);
-begin
-  FAmount := Amount;
-  FFormatSettings := TFormatSettings.Create;
-end;
-
 constructor TMoney.Create(Other: IMoney);
 begin
   FAmount := Other.Amount;
   FFormatSettings := Other.FormatSettings;
-  FCurrencyCode := Other.CurrencyCode;
+  FCurrencyCode := RequireCurrencyCode(Other.CurrencyCode);
 end;
 
 constructor TMoney.Create(Amount: Currency; const ACurrencyCode: string; FormatSettings: TFormatSettings);
 begin
   FFormatSettings := FormatSettings;
-  FCurrencyCode := ACurrencyCode;
+  FCurrencyCode := RequireCurrencyCode(ACurrencyCode);
   FAmount := Round(Amount * CentFactor);
 end;
 
 constructor TMoney.Create(Amount: Int64; const ACurrencyCode: string; FormatSettings: TFormatSettings);
 begin
   FFormatSettings := FormatSettings;
-  FCurrencyCode := ACurrencyCode;
+  FCurrencyCode := RequireCurrencyCode(ACurrencyCode);
   FAmount := Amount;
 end;
 
@@ -232,18 +211,26 @@ begin
     TFormatSettings.Create(ALocaleID));
 end;
 
+class function TMoney.FromDefaultLocale(Amount: Currency): IMoney;
+begin
+  result := FromLocale(Amount, LOCALE_USER_DEFAULT);
+end;
+
+class function TMoney.RequireCurrencyCode(const ACurrencyCode: string): string;
+begin
+  // The code is what identifies the currency, so an empty one would put us back
+  // where we started: TFormatSettings alone cannot tell USD from CAD.
+  if Trim(ACurrencyCode) = '' then
+    raise EArgumentException.Create('A TMoney needs an ISO 4217 currency code.');
+  result := ACurrencyCode;
+end;
+
 function TMoney.Equals(Amount: IMoney): boolean;
 begin
   if SameCurrencyAs(Amount) then
     result := FAmount = Amount.Amount
   else
     result := False;
-end;
-
-constructor TMoney.Create(Amount: Int64; FormatSettings : TFormatSettings);
-begin
-  FAmount := Amount;
-  FFormatSettings := FormatSettings;
 end;
 
 function TMoney.GetAmount: Int64;
@@ -269,12 +256,6 @@ end;
 function TMoney.Multiply(Amount: Currency): IMoney;
 begin
   result := NewMoney(Round(FAmount * Amount));
-end;
-
-constructor TMoney.Create(Amount: Currency; FormatSettings : TFormatSettings);
-begin
-  FFormatSettings := FormatSettings;
-  FAmount := Round(Amount * CentFactor);
 end;
 
 function TMoney.NewMoney(Amount: Int64): IMoney;

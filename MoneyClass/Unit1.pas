@@ -33,7 +33,7 @@ procedure TForm1.Button2Click(Sender: TObject);
 var
   Mon, other : IMoney;
 begin
-  Mon := TMoney.Create(45.34, TFormatSettings.Create);
+  Mon := TMoney.FromDefaultLocale(45.34);
   //other := Mon.Subtract(TMoney.Create(5.34, Curr));
   other := Mon.Multiply(5.00);
 
@@ -46,7 +46,7 @@ var
   Mon, other : IMoney;
   aList : IList<IMOney>;
 begin
-  Mon := TMoney.Create(0.05, TFormatSettings.Create);
+  Mon := TMoney.FromDefaultLocale(0.05);
   aList := Mon.Allocate([70, 30]);
 
   ShowMessage(aList.First.ToString);
