@@ -12,6 +12,7 @@ type
     function GetAmount: Int64;
     function GetFormatSettings: TFormatSettings;
     function GetDecimalAmount: Currency;
+    function GetCurrencyCode: string;
 
     function ToString: string;
     function Add(Amount : IMoney): IMoney;
@@ -23,12 +24,14 @@ type
     property Amount : Int64 read GetAmount;
     property DecimalAmount : Currency read GetDecimalAmount;
     property FormatSettings : TFormatSettings read GetFormatSettings;
+    property CurrencyCode : string read GetCurrencyCode;
   end;
 
   TMoney = class(TInterfacedObject, IMoney)
   strict private
     FAmount : Int64;
     FFormatSettings : TFormatSettings;
+    FCurrencyCode : string;
 
     function CentFactor: Int64;
     function CentFactorOf(const AFormatSettings : TFormatSettings): Int64;
@@ -36,14 +39,20 @@ type
     function NewMoney(Amount : Int64): IMoney;
     function GetAmount: Int64;
     function GetDecimalAmount: Currency;
+    function GetCurrencyCode: string;
     function GetFormatSettings: TFormatSettings;
   public
     constructor Create(Amount : Currency); overload;
     constructor Create(Amount : Int64); overload;
     constructor Create(Amount : Currency; FormatSettings : TFormatSettings); overload;
     constructor Create(Amount : Int64; FormatSettings : TFormatSettings); overload;
+    constructor Create(Amount : Currency; const ACurrencyCode : string; FormatSettings : TFormatSettings); overload;
+    constructor Create(Amount : Int64; const ACurrencyCode : string; FormatSettings : TFormatSettings); overload;
     constructor Create(Other : IMoney); overload;
-    constructor ChangeCurrency(const FromMoney : IMoney; const ToFormatSettings : TFormatSettings; const ExchangeRate : Double);
+    constructor ChangeCurrency(const FromMoney : IMoney; const ToFormatSettings : TFormatSettings; const ExchangeRate : Double; const AToCurrencyCode : string = '');
+
+    class function FromLocale(Amount : Currency; ALocaleID : integer): IMoney;
+    class function CurrencyCodeOfLocale(ALocaleID : integer): string;
 
     function ToString: string; override;
 
@@ -56,9 +65,13 @@ type
     property Amount : Int64 read GetAmount;
     property DecimalAmount : Currency read GetDecimalAmount;
     property FormatSettings : TFormatSettings read GetFormatSettings;
+    property CurrencyCode : string read GetCurrencyCode;
   end;
 
 implementation
+
+uses
+  Winapi.Windows;
 
 const
   // Currency itself carries four decimal places, so a scale beyond that cannot
@@ -124,7 +137,7 @@ begin
   // and then altered. That is what lets IMoney.Amount stay read-only.
   result := TCollections.CreateList<IMoney>;
   for i := Low(Shares) to High(Shares) do
-    result.Add(TMoney.Create(Shares[i], FFormatSettings));
+    result.Add(TMoney.Create(Shares[i], FCurrencyCode, FFormatSettings));
 end;
 
 function TMoney.CentFactor: Int64;
@@ -147,19 +160,25 @@ end;
 
 function TMoney.SameCurrencyAs(const Other : IMoney): boolean;
 begin
-  // CurrencyFormat only records where the symbol sits relative to the number
-  // (0..3), so USD and GBP both score 0 and would compare as the same currency.
-  // CurrencyString plus CurrencyDecimals is the closest thing to a currency
-  // identity that TFormatSettings offers.
+  // An ISO 4217 code is authoritative when both sides carry one. It is the only
+  // thing that separates USD from CAD, which share the '$' symbol, two decimals
+  // and the same CurrencyFormat.
+  if (FCurrencyCode <> '') and (Other.CurrencyCode <> '') then
+    Exit(SameText(FCurrencyCode, Other.CurrencyCode));
+
+  // Money built through the constructors that take no code has nothing to
+  // compare, so fall back to symbol and scale. Still better than CurrencyFormat,
+  // which records only where the symbol sits relative to the number.
   result := (Other.FormatSettings.CurrencyString = FFormatSettings.CurrencyString) and
             (Other.FormatSettings.CurrencyDecimals = FFormatSettings.CurrencyDecimals);
 end;
 
-constructor TMoney.ChangeCurrency(const FromMoney: IMoney; const ToFormatSettings: TFormatSettings; const ExchangeRate: Double);
+constructor TMoney.ChangeCurrency(const FromMoney: IMoney; const ToFormatSettings: TFormatSettings; const ExchangeRate: Double; const AToCurrencyCode: string);
 var
   FromFactor, ToFactor : Int64;
 begin
   FFormatSettings := ToFormatSettings;
+  FCurrencyCode := AToCurrencyCode;
   FromFactor := CentFactorOf(FromMoney.FormatSettings);
   ToFactor := CentFactorOf(ToFormatSettings);
   // Rescale between the two minor-unit scales in the same step as the rate so
@@ -184,6 +203,33 @@ constructor TMoney.Create(Other: IMoney);
 begin
   FAmount := Other.Amount;
   FFormatSettings := Other.FormatSettings;
+  FCurrencyCode := Other.CurrencyCode;
+end;
+
+constructor TMoney.Create(Amount: Currency; const ACurrencyCode: string; FormatSettings: TFormatSettings);
+begin
+  FFormatSettings := FormatSettings;
+  FCurrencyCode := ACurrencyCode;
+  FAmount := Round(Amount * CentFactor);
+end;
+
+constructor TMoney.Create(Amount: Int64; const ACurrencyCode: string; FormatSettings: TFormatSettings);
+begin
+  FFormatSettings := FormatSettings;
+  FCurrencyCode := ACurrencyCode;
+  FAmount := Amount;
+end;
+
+class function TMoney.CurrencyCodeOfLocale(ALocaleID: integer): string;
+begin
+  // LOCALE_SINTLSYMBOL is the ISO 4217 code: USD, GBP, JPY, CAD.
+  result := GetLocaleStr(ALocaleID, LOCALE_SINTLSYMBOL, '');
+end;
+
+class function TMoney.FromLocale(Amount: Currency; ALocaleID: integer): IMoney;
+begin
+  result := TMoney.Create(Amount, CurrencyCodeOfLocale(ALocaleID),
+    TFormatSettings.Create(ALocaleID));
 end;
 
 function TMoney.Equals(Amount: IMoney): boolean;
@@ -210,6 +256,11 @@ begin
   result := FAmount / CentFactor;
 end;
 
+function TMoney.GetCurrencyCode: string;
+begin
+  result := FCurrencyCode;
+end;
+
 function TMoney.GetFormatSettings: TFormatSettings;
 begin
   result := FFormatSettings;
@@ -228,7 +279,7 @@ end;
 
 function TMoney.NewMoney(Amount: Int64): IMoney;
 begin
-  result := TMoney.Create(Amount, FFormatSettings);
+  result := TMoney.Create(Amount, FCurrencyCode, FFormatSettings);
 end;
 
 function TMoney.Subtract(Amount: IMoney): IMoney;
