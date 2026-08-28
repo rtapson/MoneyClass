@@ -18,8 +18,13 @@ type
     function Add(Amount : IMoney): IMoney;
     function Subtract(Amount : IMoney): IMoney;
     function Multiply(Amount : Currency): IMoney;
+    function Divide(Divisor : Currency): IMoney;
+    function Negate: IMoney;
     function Allocate(Ratios : array of integer): IList<IMoney>;
     function Equals(Amount : IMoney): boolean;
+    function CompareTo(Other : IMoney): integer;
+    function LessThan(Other : IMoney): boolean;
+    function GreaterThan(Other : IMoney): boolean;
 
     property Amount : Int64 read GetAmount;
     property DecimalAmount : Currency read GetDecimalAmount;
@@ -57,8 +62,13 @@ type
     function Add(Amount : IMoney): IMoney;
     function Subtract(Amount : IMoney): IMoney;
     function Multiply(Amount : Currency): IMoney;
+    function Divide(Divisor : Currency): IMoney;
+    function Negate: IMoney;
     function Allocate(Ratios : array of integer): IList<IMoney>;
     function Equals(Amount : IMoney): boolean; reintroduce; overload;
+    function CompareTo(Other : IMoney): integer;
+    function LessThan(Other : IMoney): boolean;
+    function GreaterThan(Other : IMoney): boolean;
 
     property Amount : Int64 read GetAmount;
     property DecimalAmount : Currency read GetDecimalAmount;
@@ -256,6 +266,48 @@ end;
 function TMoney.Multiply(Amount: Currency): IMoney;
 begin
   result := NewMoney(Round(FAmount * Amount));
+end;
+
+function TMoney.Divide(Divisor: Currency): IMoney;
+begin
+  if Divisor = 0 then
+    raise EArgumentException.Create('Cannot divide money by zero.');
+
+  // Rounds, like Multiply. Division does not generally conserve minor units:
+  // $1.00 / 3 rounds to $0.33, and three of those are a cent short of the
+  // whole. Use Allocate when the parts have to add back up.
+  result := NewMoney(Round(FAmount / Divisor));
+end;
+
+function TMoney.Negate: IMoney;
+begin
+  result := NewMoney(-FAmount);
+end;
+
+function TMoney.CompareTo(Other: IMoney): integer;
+begin
+  // Ordering across currencies is meaningless, so this raises where Equals
+  // simply answers False: two amounts in different currencies are definitely
+  // not equal, but which is the greater is not a question with an answer.
+  if not SameCurrencyAs(Other) then
+    raise ECurrencyCodeMismatch.Create('Currency Codes don''t match.');
+
+  if FAmount < Other.Amount then
+    result := -1
+  else if FAmount > Other.Amount then
+    result := 1
+  else
+    result := 0;
+end;
+
+function TMoney.LessThan(Other: IMoney): boolean;
+begin
+  result := CompareTo(Other) < 0;
+end;
+
+function TMoney.GreaterThan(Other: IMoney): boolean;
+begin
+  result := CompareTo(Other) > 0;
 end;
 
 function TMoney.NewMoney(Amount: Int64): IMoney;

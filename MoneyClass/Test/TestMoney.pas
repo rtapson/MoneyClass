@@ -56,6 +56,12 @@ type
     procedure TestCurrencyCodeSurvivesArithmetic;
     procedure TestChangeCurrencyCarriesTargetCode;
     procedure TestRejectsEmptyCurrencyCode;
+    procedure TestDivide;
+    procedure TestDivideByZeroRaises;
+    procedure TestDivideDoesNotConserveButAllocateDoes;
+    procedure TestNegate;
+    procedure TestCompareToAndOrdering;
+    procedure TestCompareToDifferentCurrenciesRaises;
   end;
 
   //Test Allocating money
@@ -335,6 +341,111 @@ begin
     Fail(Format('an empty currency code should raise, got %d', [M.Amount]));
   except
     on E: EArgumentException do
+      ; // expected
+  end;
+end;
+
+procedure TestTMoney.TestDivide;
+var
+  M : IMoney;
+begin
+  M := TMoney.FromLocale(10.00, LCID_US);
+  CheckEquals(Int64(250), M.Divide(4).Amount, '$10.00 / 4');
+  CheckEquals(Int64(333), M.Divide(3).Amount, '$10.00 / 3 rounds to the cent');
+  CheckEqualsString('USD', M.Divide(4).CurrencyCode, 'the code survives');
+end;
+
+procedure TestTMoney.TestDivideByZeroRaises;
+var
+  M : IMoney;
+  R : IMoney;
+begin
+  M := TMoney.FromLocale(10.00, LCID_US);
+  try
+    R := M.Divide(0);
+    Fail(Format('dividing by zero should raise, got %d', [R.Amount]));
+  except
+    on E: EArgumentException do
+      ; // expected
+  end;
+end;
+
+procedure TestTMoney.TestDivideDoesNotConserveButAllocateDoes;
+var
+  Dollar : IMoney;
+  Shares : IList<IMoney>;
+  Ratios : array[0..2] of integer;
+  Total : Int64;
+  i : Integer;
+begin
+  // Divide rounds each part on its own, so the parts need not add back up to
+  // the whole. That is exactly why Allocate exists. Pinning both behaviours
+  // here so neither gets "fixed" into the other.
+  Dollar := TMoney.FromLocale(1.00, LCID_US);
+
+  CheckEquals(Int64(33), Dollar.Divide(3).Amount, 'a third of a dollar');
+  CheckEquals(Int64(99), Dollar.Divide(3).Multiply(3).Amount,
+    'three thirds are a cent short of the whole');
+
+  Ratios[0] := 1;
+  Ratios[1] := 1;
+  Ratios[2] := 1;
+  Shares := Dollar.Allocate(Ratios);
+
+  Total := 0;
+  for i := 0 to Shares.Count - 1 do
+    Total := Total + Shares.Items[i].Amount;
+  CheckEquals(Int64(100), Total, 'Allocate conserves the whole');
+end;
+
+procedure TestTMoney.TestNegate;
+var
+  M : IMoney;
+begin
+  M := TMoney.FromLocale(45.34, LCID_US);
+
+  CheckEquals(Int64(-4534), M.Negate.Amount);
+  CheckEquals(Int64(4534), M.Negate.Negate.Amount, 'negation is its own inverse');
+  CheckEqualsString('USD', M.Negate.CurrencyCode, 'the code survives');
+  CheckEquals(Int64(0), M.Add(M.Negate).Amount, 'a value plus its negation is zero');
+end;
+
+procedure TestTMoney.TestCompareToAndOrdering;
+var
+  Small : IMoney;
+  Big : IMoney;
+begin
+  Small := TMoney.FromLocale(5.00, LCID_US);
+  Big := TMoney.FromLocale(10.00, LCID_US);
+
+  CheckEquals(-1, Small.CompareTo(Big), 'less');
+  CheckEquals(1, Big.CompareTo(Small), 'greater');
+  CheckEquals(0, Big.CompareTo(TMoney.FromLocale(10.00, LCID_US)), 'equal');
+
+  Check(Small.LessThan(Big), 'LessThan');
+  Check(Big.GreaterThan(Small), 'GreaterThan');
+  CheckFalse(Big.LessThan(Small), 'not LessThan');
+  CheckFalse(Small.GreaterThan(Big), 'not GreaterThan');
+end;
+
+procedure TestTMoney.TestCompareToDifferentCurrenciesRaises;
+var
+  USD : IMoney;
+  GBP : IMoney;
+begin
+  // Equals answers False across currencies - they are certainly not equal.
+  // Which one is greater is not a question with an answer, so CompareTo
+  // raises rather than inventing one.
+  USD := TMoney.FromLocale(10.00, LCID_US);
+  GBP := TMoney.FromLocale(10.00, LCID_GB);
+
+  CheckFalse(USD.Equals(GBP), 'Equals answers False');
+
+  try
+    USD.CompareTo(GBP);
+    Fail('comparing USD with GBP should raise ECurrencyCodeMismatch');
+  except
+    on E: ECurrencyCodeMismatch do
       ; // expected
   end;
 end;
