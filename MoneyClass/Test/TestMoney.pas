@@ -33,6 +33,10 @@ type
     procedure TestJBConversion;
     procedure TestChangeCurrencyRescalesMinorUnits;
     procedure TestAddDifferentCurrenciesRaises;
+    procedure TestAllocateNegativeAmountKeepsEveryUnit;
+    procedure TestAllocateRejectsEmptyAndZeroRatios;
+    procedure TestAllocateHandlesAmountsPastIntegerRange;
+    procedure TestMultiplyPastIntegerRange;
   end;
 
   //Test Allocating money
@@ -233,6 +237,82 @@ begin
     on E: ECurrencyCodeMismatch do
       ; // expected
   end;
+end;
+
+procedure TestTMoney.TestAllocateNegativeAmountKeepsEveryUnit;
+var
+  Debt : IMoney;
+  Shares : IList<IMoney>;
+  Ratios : array[0..1] of integer;
+begin
+  // -101 cents split evenly. Truncating division handed out -50 and -50 and
+  // quietly dropped a cent; flooring hands out -50 and -51.
+  Debt := TMoney.Create(-1.01);
+  Ratios[0] := 1;
+  Ratios[1] := 1;
+
+  Shares := Debt.Allocate(Ratios);
+
+  CheckEquals(Int64(-101), Shares.Items[0].Amount + Shares.Items[1].Amount,
+    'the shares must add back up to the whole');
+  CheckEquals(Int64(-50), Shares.Items[0].Amount);
+  CheckEquals(Int64(-51), Shares.Items[1].Amount);
+end;
+
+procedure TestTMoney.TestAllocateRejectsEmptyAndZeroRatios;
+var
+  Empty : array of integer;
+  Zeros : array[0..1] of integer;
+begin
+  // Previously: empty ratios indexed an empty list, zero-sum ratios divided
+  // by zero.
+  SetLength(Empty, 0);
+  try
+    FMoney.Allocate(Empty);
+    Fail('empty ratios should raise EArgumentException');
+  except
+    on E: EArgumentException do
+      CheckFalse(E is EArgumentOutOfRangeException,
+        'the guard should raise deliberately, not fail on an index');
+  end;
+
+  Zeros[0] := 0;
+  Zeros[1] := 0;
+  try
+    FMoney.Allocate(Zeros);
+    Fail('zero-sum ratios should raise EArgumentException');
+  except
+    on E: EArgumentException do
+      CheckFalse(E is EArgumentOutOfRangeException,
+        'the guard should raise deliberately, not fail on an index');
+  end;
+end;
+
+procedure TestTMoney.TestAllocateHandlesAmountsPastIntegerRange;
+var
+  Big : IMoney;
+  Shares : IList<IMoney>;
+  Ratios : array[0..1] of integer;
+begin
+  // $1,000,000.00 is 100,000,000 cents; times ratio 30 is 3e9, which overflowed
+  // the old 32-bit intermediate and produced negative shares.
+  Big := TMoney.Create(1000000.00);
+  Ratios[0] := 30;
+  Ratios[1] := 70;
+
+  Shares := Big.Allocate(Ratios);
+
+  CheckEquals(Int64(30000000), Shares.Items[0].Amount);
+  CheckEquals(Int64(70000000), Shares.Items[1].Amount);
+end;
+
+procedure TestTMoney.TestMultiplyPastIntegerRange;
+var
+  Big : IMoney;
+begin
+  // 1e9 cents times 3 is 3e9, past what the old Integer amount could hold.
+  Big := TMoney.Create(10000000.00);
+  CheckEquals(Int64(3000000000), Big.Multiply(3).Amount);
 end;
 
 { TestBritishMoney }

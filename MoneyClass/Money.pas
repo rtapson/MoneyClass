@@ -9,8 +9,8 @@ type
   ECurrencyCodeMismatch = class(Exception);
 
   IMoney = interface
-    function GetAmount: Integer;
-    procedure SetAmount(const Value: Integer);
+    function GetAmount: Int64;
+    procedure SetAmount(const Value: Int64);
     function GetFormatSettings: TFormatSettings;
     function GetDecimalAmount: Currency;
 
@@ -21,7 +21,7 @@ type
     function Allocate(Ratios : array of integer): IList<IMoney>;
     function Equals(Amount : IMoney): boolean;
 
-    property Amount : Integer read GetAmount write SetAmount;
+    property Amount : Int64 read GetAmount write SetAmount;
     property DecimalAmount : Currency read GetDecimalAmount;
     property FormatSettings : TFormatSettings read GetFormatSettings;
   end;
@@ -29,23 +29,23 @@ type
   TMoney = class(TInterfacedObject, IMoney)
   strict private
     FCents : array[0..3] of integer;
-    FAmount : integer;
+    FAmount : Int64;
     FFormatSettings : TFormatSettings;
 
     procedure FillCentsArray;
     function CentFactor: integer;
     function CentFactorOf(const AFormatSettings : TFormatSettings): integer;
     function SameCurrencyAs(const Other : IMoney): boolean;
-    function NewMoney(Amount : integer): IMoney;
-    function GetAmount: Integer;
-    procedure SetAmount(const Value: Integer);
+    function NewMoney(Amount : Int64): IMoney;
+    function GetAmount: Int64;
+    procedure SetAmount(const Value: Int64);
     function GetDecimalAmount: Currency;
     function GetFormatSettings: TFormatSettings;
   public
     constructor Create(Amount : Currency); overload;
-    constructor Create(Amount : integer); overload;
+    constructor Create(Amount : Int64); overload;
     constructor Create(Amount : Currency; FormatSettings : TFormatSettings); overload;
-    constructor Create(Amount : integer; FormatSettings : TFormatSettings); overload;
+    constructor Create(Amount : Int64; FormatSettings : TFormatSettings); overload;
     constructor Create(Other : IMoney); overload;
     constructor ChangeCurrency(const FromMoney : IMoney; const ToFormatSettings : TFormatSettings; const ExchangeRate : Double);
 
@@ -57,7 +57,7 @@ type
     function Allocate(Ratios : array of integer): IList<IMoney>;
     function Equals(Amount : IMoney): boolean; reintroduce; overload;
 
-    property Amount : Integer read GetAmount write SetAmount;
+    property Amount : Int64 read GetAmount write SetAmount;
     property DecimalAmount : Currency read GetDecimalAmount;
     property FormatSettings : TFormatSettings read GetFormatSettings;
   end;
@@ -74,27 +74,50 @@ begin
     raise ECurrencyCodeMismatch.Create('Currency Codes don''t match.');
 end;
 
+function FloorDiv(const A, B : Int64): Int64;
+begin
+  result := A div B;
+  if (A mod B <> 0) and ((A < 0) <> (B < 0)) then
+    Dec(result);
+end;
+
 function TMoney.Allocate(Ratios: array of integer): IList<IMoney>;
 var
-  Total : integer;
-  Remainder : integer;
+  Total : Int64;
+  Remainder : Int64;
+  Share : Int64;
   i: Integer;
 begin
-  Total := 0;
-  Remainder := FAmount;
+  if Length(Ratios) = 0 then
+    raise EArgumentException.Create('Allocate needs at least one ratio.');
 
+  Total := 0;
   for i := Low(Ratios) to High(Ratios) do
+  begin
+    if Ratios[i] < 0 then
+      raise EArgumentException.Create('Allocate ratios cannot be negative.');
     Total := Total + Ratios[i];
+  end;
+
+  if Total = 0 then
+    raise EArgumentException.Create('Allocate ratios cannot sum to zero.');
 
   result := TCollections.CreateList<IMoney>;
 
+  // FloorDiv, not div. div truncates toward zero, so for a negative amount the
+  // shares come out collectively larger than the whole and leave a negative
+  // Remainder that the distribution loop below silently drops, losing a minor
+  // unit. Flooring keeps Remainder in 0..High(Ratios) whatever the sign, so
+  // every minor unit is handed out.
+  Remainder := FAmount;
   for i := Low(Ratios) to High(Ratios) do
   begin
-    result.Add(TMoney.Create(FAmount * Ratios[i] div Total, FFormatSettings));
-    Remainder := Remainder - result.Last.Amount;
+    Share := FloorDiv(FAmount * Ratios[i], Total);
+    result.Add(TMoney.Create(Share, FFormatSettings));
+    Remainder := Remainder - Share;
   end;
 
-  for i := 0 to Remainder - 1 do
+  for i := 0 to Integer(Remainder) - 1 do
     result.Items[i].Amount := result.Items[i].Amount + 1;
 end;
 
@@ -139,7 +162,7 @@ begin
   FAmount := Trunc(Amount * CentFactor);
 end;
 
-constructor TMoney.Create(Amount: integer);
+constructor TMoney.Create(Amount: Int64);
 begin
   FillCentsArray;
   FAmount := Amount;
@@ -161,7 +184,7 @@ begin
     result := False;
 end;
 
-constructor TMoney.Create(Amount: integer; FormatSettings : TFormatSettings);
+constructor TMoney.Create(Amount: Int64; FormatSettings : TFormatSettings);
 begin
   FillCentsArray;
   FAmount := Amount;
@@ -176,7 +199,7 @@ begin
   FCents[3] := 1000;
 end;
 
-function TMoney.GetAmount: Integer;
+function TMoney.GetAmount: Int64;
 begin
   result := FAmount;
 end;
@@ -203,12 +226,12 @@ begin
   FAmount := Trunc(Amount * CentFactor);
 end;
 
-function TMoney.NewMoney(Amount: integer): IMoney;
+function TMoney.NewMoney(Amount: Int64): IMoney;
 begin
   result := TMoney.Create(Amount, FFormatSettings);
 end;
 
-procedure TMoney.SetAmount(const Value: Integer);
+procedure TMoney.SetAmount(const Value: Int64);
 begin
   FAmount := Value;
 end;
