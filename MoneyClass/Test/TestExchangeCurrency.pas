@@ -15,7 +15,7 @@ type
 implementation
 
 uses
-  Money, CurrencyExchange, SysUtils;
+  Money, CurrencyExchange, SysUtils, TestMoney;
 
 { TTestCurrencyExchange }
 
@@ -24,8 +24,8 @@ var
   FromMoney : IMoney;
   ToMoney : IMoney;
 begin
-  FromMoney := TMoney.FromLocale(36.48, 2057);
-  ToMoney := TCurrencyExchange.ChangeCurrency(FromMoney, TFormatSettings.Create, 1.58, 'USD');
+  FromMoney := TMoney.FromLocale(36.48, LCID_GB);
+  ToMoney := TCurrencyExchange.ChangeCurrency(FromMoney, TFormatSettings.Create(LCID_US), 1.58, TMoney.CurrencyCodeOfLocale(LCID_US));
   //57.6384
   //5764
   CheckEquals(5764, ToMoney.Amount);
@@ -37,8 +37,8 @@ var
   FromMoney : IMoney;
   ToMoney : IMoney;
 begin
-  FromMoney := TMoney.FromDefaultLocale(36.48);
-  ToMoney := TCurrencyExchange.ChangeCurrency(FromMoney, TFormatSettings.Create(2057), 1.58, TMoney.CurrencyCodeOfLocale(2057));
+  FromMoney := TMoney.FromLocale(36.48, LCID_US);
+  ToMoney := TCurrencyExchange.ChangeCurrency(FromMoney, TFormatSettings.Create(LCID_GB), 1.58, TMoney.CurrencyCodeOfLocale(LCID_GB));
   CheckEquals(5764, ToMoney.Amount);
   CheckEqualsString('£57.64', ToMoney.ToString);
 end;
