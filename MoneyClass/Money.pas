@@ -10,7 +10,6 @@ type
 
   IMoney = interface
     function GetAmount: Int64;
-    procedure SetAmount(const Value: Int64);
     function GetFormatSettings: TFormatSettings;
     function GetDecimalAmount: Currency;
 
@@ -21,24 +20,21 @@ type
     function Allocate(Ratios : array of integer): IList<IMoney>;
     function Equals(Amount : IMoney): boolean;
 
-    property Amount : Int64 read GetAmount write SetAmount;
+    property Amount : Int64 read GetAmount;
     property DecimalAmount : Currency read GetDecimalAmount;
     property FormatSettings : TFormatSettings read GetFormatSettings;
   end;
 
   TMoney = class(TInterfacedObject, IMoney)
   strict private
-    FCents : array[0..3] of integer;
     FAmount : Int64;
     FFormatSettings : TFormatSettings;
 
-    procedure FillCentsArray;
-    function CentFactor: integer;
-    function CentFactorOf(const AFormatSettings : TFormatSettings): integer;
+    function CentFactor: Int64;
+    function CentFactorOf(const AFormatSettings : TFormatSettings): Int64;
     function SameCurrencyAs(const Other : IMoney): boolean;
     function NewMoney(Amount : Int64): IMoney;
     function GetAmount: Int64;
-    procedure SetAmount(const Value: Int64);
     function GetDecimalAmount: Currency;
     function GetFormatSettings: TFormatSettings;
   public
@@ -57,12 +53,18 @@ type
     function Allocate(Ratios : array of integer): IList<IMoney>;
     function Equals(Amount : IMoney): boolean; reintroduce; overload;
 
-    property Amount : Int64 read GetAmount write SetAmount;
+    property Amount : Int64 read GetAmount;
     property DecimalAmount : Currency read GetDecimalAmount;
     property FormatSettings : TFormatSettings read GetFormatSettings;
   end;
 
 implementation
+
+const
+  // Currency itself carries four decimal places, so a scale beyond that cannot
+  // round-trip through the Currency conversions anyway.
+  MaxCurrencyDecimals = 4;
+  CentFactors : array[0..MaxCurrencyDecimals] of Int64 = (1, 10, 100, 1000, 10000);
 
 { TMoney }
 
@@ -85,7 +87,7 @@ function TMoney.Allocate(Ratios: array of integer): IList<IMoney>;
 var
   Total : Int64;
   Remainder : Int64;
-  Share : Int64;
+  Shares : TArray<Int64>;
   i: Integer;
 begin
   if Length(Ratios) = 0 then
@@ -102,33 +104,45 @@ begin
   if Total = 0 then
     raise EArgumentException.Create('Allocate ratios cannot sum to zero.');
 
-  result := TCollections.CreateList<IMoney>;
-
   // FloorDiv, not div. div truncates toward zero, so for a negative amount the
   // shares come out collectively larger than the whole and leave a negative
-  // Remainder that the distribution loop below silently drops, losing a minor
+  // Remainder that the distribution below would silently drop, losing a minor
   // unit. Flooring keeps Remainder in 0..High(Ratios) whatever the sign, so
   // every minor unit is handed out.
+  SetLength(Shares, Length(Ratios));
   Remainder := FAmount;
   for i := Low(Ratios) to High(Ratios) do
   begin
-    Share := FloorDiv(FAmount * Ratios[i], Total);
-    result.Add(TMoney.Create(Share, FFormatSettings));
-    Remainder := Remainder - Share;
+    Shares[i] := FloorDiv(FAmount * Ratios[i], Total);
+    Remainder := Remainder - Shares[i];
   end;
 
   for i := 0 to Integer(Remainder) - 1 do
-    result.Items[i].Amount := result.Items[i].Amount + 1;
+    Shares[i] := Shares[i] + 1;
+
+  // Settle the amounts before constructing, so no TMoney is ever handed out
+  // and then altered. That is what lets IMoney.Amount stay read-only.
+  result := TCollections.CreateList<IMoney>;
+  for i := Low(Shares) to High(Shares) do
+    result.Add(TMoney.Create(Shares[i], FFormatSettings));
 end;
 
-function TMoney.CentFactor: integer;
+function TMoney.CentFactor: Int64;
 begin
   result := CentFactorOf(FFormatSettings);
 end;
 
-function TMoney.CentFactorOf(const AFormatSettings : TFormatSettings): integer;
+function TMoney.CentFactorOf(const AFormatSettings : TFormatSettings): Int64;
 begin
-  result := FCents[AFormatSettings.CurrencyDecimals];
+  // CurrencyDecimals is a Byte, and Windows regional settings let it run well
+  // past the table. Reading off the end silently scaled amounts by whatever
+  // happened to follow in memory, so refuse the setting instead.
+  if AFormatSettings.CurrencyDecimals > MaxCurrencyDecimals then
+    raise EArgumentException.CreateFmt(
+      'CurrencyDecimals is %d; TMoney supports at most %d.',
+      [AFormatSettings.CurrencyDecimals, MaxCurrencyDecimals]);
+
+  result := CentFactors[AFormatSettings.CurrencyDecimals];
 end;
 
 function TMoney.SameCurrencyAs(const Other : IMoney): boolean;
@@ -143,9 +157,8 @@ end;
 
 constructor TMoney.ChangeCurrency(const FromMoney: IMoney; const ToFormatSettings: TFormatSettings; const ExchangeRate: Double);
 var
-  FromFactor, ToFactor : integer;
+  FromFactor, ToFactor : Int64;
 begin
-  FillCentsArray;
   FFormatSettings := ToFormatSettings;
   FromFactor := CentFactorOf(FromMoney.FormatSettings);
   ToFactor := CentFactorOf(ToFormatSettings);
@@ -157,21 +170,18 @@ end;
 
 constructor TMoney.Create(Amount: Currency);
 begin
-  FillCentsArray;
   FFormatSettings := TFormatSettings.Create;
-  FAmount := Trunc(Amount * CentFactor);
+  FAmount := Round(Amount * CentFactor);
 end;
 
 constructor TMoney.Create(Amount: Int64);
 begin
-  FillCentsArray;
   FAmount := Amount;
   FFormatSettings := TFormatSettings.Create;
 end;
 
 constructor TMoney.Create(Other: IMoney);
 begin
-  FillCentsArray;
   FAmount := Other.Amount;
   FFormatSettings := Other.FormatSettings;
 end;
@@ -186,17 +196,8 @@ end;
 
 constructor TMoney.Create(Amount: Int64; FormatSettings : TFormatSettings);
 begin
-  FillCentsArray;
   FAmount := Amount;
   FFormatSettings := FormatSettings;
-end;
-
-procedure TMoney.FillCentsArray;
-begin
-  FCents[0] := 1;
-  FCents[1] := 10;
-  FCents[2] := 100;
-  FCents[3] := 1000;
 end;
 
 function TMoney.GetAmount: Int64;
@@ -221,19 +222,13 @@ end;
 
 constructor TMoney.Create(Amount: Currency; FormatSettings : TFormatSettings);
 begin
-  FillCentsArray;
   FFormatSettings := FormatSettings;
-  FAmount := Trunc(Amount * CentFactor);
+  FAmount := Round(Amount * CentFactor);
 end;
 
 function TMoney.NewMoney(Amount: Int64): IMoney;
 begin
   result := TMoney.Create(Amount, FFormatSettings);
-end;
-
-procedure TMoney.SetAmount(const Value: Int64);
-begin
-  FAmount := Value;
 end;
 
 function TMoney.Subtract(Amount: IMoney): IMoney;

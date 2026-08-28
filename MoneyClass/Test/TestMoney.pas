@@ -37,6 +37,8 @@ type
     procedure TestAllocateRejectsEmptyAndZeroRatios;
     procedure TestAllocateHandlesAmountsPastIntegerRange;
     procedure TestMultiplyPastIntegerRange;
+    procedure TestConstructorRoundsRatherThanTruncates;
+    procedure TestRejectsUnsupportedCurrencyDecimals;
   end;
 
   //Test Allocating money
@@ -197,17 +199,48 @@ end;
 
 procedure TestTMoney.TestJBConversion;
 var
+  CRCSettings : TFormatSettings;
   CRC : IMoney;
   USD : IMoney;
 begin
-{  CRC := TMoney.Create(135102.13);
+  // 135,102.13 colones at 492.57 CRC to the dollar is $274.28. Built from an
+  // explicit TFormatSettings rather than a locale id so the test does not
+  // depend on which locales the machine has.
+  CRCSettings := TFormatSettings.Create;
+  CRCSettings.CurrencyString := 'CRC';
+  CRCSettings.CurrencyDecimals := 2;
 
-  USD := Crc.(492.57);
+  CRC := TMoney.Create(135102.13, CRCSettings);
+  USD := TMoney.ChangeCurrency(CRC, TFormatSettings.Create, 1 / 492.57);
 
-  CheckEquals(274.28, USD.DecimalAmount);}
+  CheckEquals(Int64(27428), USD.Amount);
+end;
 
-  // TODO: not implemented. Intended case: convert CRC 135,102.13 to USD at
-  // 492.57 CRC/USD and expect USD 274.28. Asserts nothing until written.
+procedure TestTMoney.TestConstructorRoundsRatherThanTruncates;
+begin
+  // 1.239 is 123.9 cents. Truncating gave 123, quietly discarding most of a
+  // cent, while Multiply already rounded - so the same value built two ways
+  // disagreed.
+  CheckEquals(Int64(124), TMoney.Create(1.239).Amount);
+  CheckEquals(Int64(-124), TMoney.Create(-1.239).Amount);
+end;
+
+procedure TestTMoney.TestRejectsUnsupportedCurrencyDecimals;
+var
+  Odd : TFormatSettings;
+  M : IMoney;
+begin
+  // CurrencyDecimals is a Byte and Windows lets it run past the factor table.
+  // The old code read whatever followed the table in memory and scaled by it.
+  Odd := TFormatSettings.Create;
+  Odd.CurrencyDecimals := 9;
+  try
+    M := TMoney.Create(1.00, Odd);
+    Fail(Format('9 currency decimals should raise, got %d', [M.Amount]));
+  except
+    on E: EArgumentException do
+      ; // expected
+  end;
 end;
 
 procedure TestTMoney.TestChangeCurrencyRescalesMinorUnits;
