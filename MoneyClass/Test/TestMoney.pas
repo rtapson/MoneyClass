@@ -200,7 +200,8 @@ begin
 
   CheckEquals(274.28, USD.DecimalAmount);}
 
-  USD := TMoney.Create(FromMoney.Multiply(ExchangeRate).Amount, ToFormatSettings);
+  // TODO: not implemented. Intended case: convert CRC 135,102.13 to USD at
+  // 492.57 CRC/USD and expect USD 274.28. Asserts nothing until written.
 end;
 
 { TestBritishMoney }

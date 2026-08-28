@@ -6,7 +6,7 @@ uses
   SysUtils, Spring.Collections;
 
 type
-  ECurrencyCodeMismatch = Exception;
+  ECurrencyCodeMismatch = class(Exception);
 
   IMoney = interface
     function GetAmount: Integer;
