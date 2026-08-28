@@ -31,6 +31,8 @@ type
     procedure TestChangeCurrencyConstructorGBPtoUSD;
     procedure TestChangeCurrencyConstructorUSDtoGBP;
     procedure TestJBConversion;
+    procedure TestChangeCurrencyRescalesMinorUnits;
+    procedure TestAddDifferentCurrenciesRaises;
   end;
 
   //Test Allocating money
@@ -202,6 +204,35 @@ begin
 
   // TODO: not implemented. Intended case: convert CRC 135,102.13 to USD at
   // 492.57 CRC/USD and expect USD 274.28. Asserts nothing until written.
+end;
+
+procedure TestTMoney.TestChangeCurrencyRescalesMinorUnits;
+var
+  USD : IMoney;
+  JPY : IMoney;
+begin
+  // USD carries two minor-unit digits, JPY none, so the raw amounts are on
+  // different scales. $10.00 at 150 JPY/USD is 1500 yen, not 150000.
+  USD := TMoney.Create(10.00);
+  JPY := TMoney.ChangeCurrency(USD, TFormatSettings.Create(1041), 150);
+  CheckEquals(0, JPY.FormatSettings.CurrencyDecimals, 'JPY should have no minor unit');
+  CheckEquals(1500, JPY.Amount);
+end;
+
+procedure TestTMoney.TestAddDifferentCurrenciesRaises;
+var
+  GBP : IMoney;
+begin
+  // CurrencyFormat is 0 for both en-US and en-GB, so the old guard compared
+  // equal and let this addition through.
+  GBP := TMoney.Create(10.00, TFormatSettings.Create(2057));
+  try
+    FMoney.Add(GBP);
+    Fail('Adding GBP to USD should raise ECurrencyCodeMismatch');
+  except
+    on E: ECurrencyCodeMismatch do
+      ; // expected
+  end;
 end;
 
 { TestBritishMoney }

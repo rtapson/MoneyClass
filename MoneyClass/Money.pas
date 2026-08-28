@@ -34,6 +34,8 @@ type
 
     procedure FillCentsArray;
     function CentFactor: integer;
+    function CentFactorOf(const AFormatSettings : TFormatSettings): integer;
+    function SameCurrencyAs(const Other : IMoney): boolean;
     function NewMoney(Amount : integer): IMoney;
     function GetAmount: Integer;
     procedure SetAmount(const Value: Integer);
@@ -66,7 +68,7 @@ implementation
 
 function TMoney.Add(Amount: IMoney): IMoney;
 begin
-  if Amount.FormatSettings.CurrencyFormat = FFormatSettings.CurrencyFormat then
+  if SameCurrencyAs(Amount) then
     result := NewMoney(FAmount + Amount.Amount)
   else
     raise ECurrencyCodeMismatch.Create('Currency Codes don''t match.');
@@ -98,14 +100,36 @@ end;
 
 function TMoney.CentFactor: integer;
 begin
-  result := FCents[FFormatSettings.CurrencyDecimals];
+  result := CentFactorOf(FFormatSettings);
+end;
+
+function TMoney.CentFactorOf(const AFormatSettings : TFormatSettings): integer;
+begin
+  result := FCents[AFormatSettings.CurrencyDecimals];
+end;
+
+function TMoney.SameCurrencyAs(const Other : IMoney): boolean;
+begin
+  // CurrencyFormat only records where the symbol sits relative to the number
+  // (0..3), so USD and GBP both score 0 and would compare as the same currency.
+  // CurrencyString plus CurrencyDecimals is the closest thing to a currency
+  // identity that TFormatSettings offers.
+  result := (Other.FormatSettings.CurrencyString = FFormatSettings.CurrencyString) and
+            (Other.FormatSettings.CurrencyDecimals = FFormatSettings.CurrencyDecimals);
 end;
 
 constructor TMoney.ChangeCurrency(const FromMoney: IMoney; const ToFormatSettings: TFormatSettings; const ExchangeRate: Double);
+var
+  FromFactor, ToFactor : integer;
 begin
   FillCentsArray;
   FFormatSettings := ToFormatSettings;
-  FAmount := FromMoney.Multiply(ExchangeRate).Amount;
+  FromFactor := CentFactorOf(FromMoney.FormatSettings);
+  ToFactor := CentFactorOf(ToFormatSettings);
+  // Rescale between the two minor-unit scales in the same step as the rate so
+  // the conversion rounds once. $10.00 (1000 cents) to JPY (no minor unit) at
+  // 150 must give 1500, not 150000.
+  FAmount := Round(FromMoney.Amount * ExchangeRate * ToFactor / FromFactor);
 end;
 
 constructor TMoney.Create(Amount: Currency);
@@ -131,10 +155,10 @@ end;
 
 function TMoney.Equals(Amount: IMoney): boolean;
 begin
-  if Amount.FormatSettings.CurrencyFormat = FFormatSettings.CurrencyFormat then
+  if SameCurrencyAs(Amount) then
     result := FAmount = Amount.Amount
   else
-    raise ECurrencyCodeMismatch.Create('Currency Codes don''t match.');
+    result := False;
 end;
 
 constructor TMoney.Create(Amount: integer; FormatSettings : TFormatSettings);
@@ -191,7 +215,7 @@ end;
 
 function TMoney.Subtract(Amount: IMoney): IMoney;
 begin
-  if Amount.FormatSettings.CurrencyFormat = FFormatSettings.CurrencyFormat then
+  if SameCurrencyAs(Amount) then
     result := NewMoney(FAmount - Amount.Amount)
   else
     raise ECurrencyCodeMismatch.Create('Currency Codes don''t match.');

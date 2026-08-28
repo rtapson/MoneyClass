@@ -16,10 +16,10 @@ implementation
 { TCurrencyExchange }
 
 class function TCurrencyExchange.ChangeCurrency(const FromMoney: IMoney; const ToFormatSettings: TFormatSettings; const ExchangeRate : Double): IMoney;
-var
-  NewAmount : integer;
 begin
-  result := TMoney.Create(FromMoney.Multiply(ExchangeRate).Amount, ToFormatSettings);
+  // Delegate rather than duplicate: TMoney.ChangeCurrency rescales between
+  // currencies that use different numbers of minor-unit digits.
+  result := TMoney.ChangeCurrency(FromMoney, ToFormatSettings, ExchangeRate);
 end;
 
 end.
