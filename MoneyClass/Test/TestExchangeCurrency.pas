@@ -24,8 +24,8 @@ var
   FromMoney : IMoney;
   ToMoney : IMoney;
 begin
-  FromMoney := TMoney.Create(36.48, TFormatSettings.Create(2057));
-  ToMoney := TCurrencyExchange.ChangeCurrency(FromMoney, TFormatSettings.Create, 1.58);
+  FromMoney := TMoney.FromLocale(36.48, 2057);
+  ToMoney := TCurrencyExchange.ChangeCurrency(FromMoney, TFormatSettings.Create, 1.58, 'USD');
   //57.6384
   //5764
   CheckEquals(5764, ToMoney.Amount);
@@ -37,8 +37,8 @@ var
   FromMoney : IMoney;
   ToMoney : IMoney;
 begin
-  FromMoney := TMoney.Create(36.48);
-  ToMoney := TCurrencyExchange.ChangeCurrency(FromMoney, TFormatSettings.Create(2057), 1.58);
+  FromMoney := TMoney.FromDefaultLocale(36.48);
+  ToMoney := TCurrencyExchange.ChangeCurrency(FromMoney, TFormatSettings.Create(2057), 1.58, TMoney.CurrencyCodeOfLocale(2057));
   CheckEquals(5764, ToMoney.Amount);
   CheckEqualsString('£57.64', ToMoney.ToString);
 end;

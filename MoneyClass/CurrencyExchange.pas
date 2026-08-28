@@ -8,7 +8,7 @@ uses
 type
   TCurrencyExchange = class
   public
-    class function ChangeCurrency(const FromMoney : IMoney; const ToFormatSettings : TFormatSettings; const ExchangeRate : Double; const AToCurrencyCode : string = ''): IMoney;
+    class function ChangeCurrency(const FromMoney : IMoney; const ToFormatSettings : TFormatSettings; const ExchangeRate : Double; const AToCurrencyCode : string): IMoney;
   end;
 
 implementation
