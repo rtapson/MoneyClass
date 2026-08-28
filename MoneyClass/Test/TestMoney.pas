@@ -39,6 +39,10 @@ type
     procedure TestMultiplyPastIntegerRange;
     procedure TestConstructorRoundsRatherThanTruncates;
     procedure TestRejectsUnsupportedCurrencyDecimals;
+    procedure TestFromLocaleCarriesIsoCode;
+    procedure TestCurrencyCodeSeparatesDollarCurrencies;
+    procedure TestCurrencyCodeSurvivesArithmetic;
+    procedure TestChangeCurrencyCarriesTargetCode;
   end;
 
   //Test Allocating money
@@ -241,6 +245,70 @@ begin
     on E: EArgumentException do
       ; // expected
   end;
+end;
+
+procedure TestTMoney.TestFromLocaleCarriesIsoCode;
+begin
+  CheckEqualsString('USD', TMoney.FromLocale(45.34, 1033).CurrencyCode);
+  CheckEqualsString('GBP', TMoney.FromLocale(45.34, 2057).CurrencyCode);
+  CheckEqualsString('JPY', TMoney.FromLocale(45, 1041).CurrencyCode);
+end;
+
+procedure TestTMoney.TestCurrencyCodeSeparatesDollarCurrencies;
+var
+  USD : IMoney;
+  CAD : IMoney;
+begin
+  // en-US and en-CA are indistinguishable by symbol ('$'), decimals (2) and
+  // CurrencyFormat (0). The ISO code is the only thing that tells them apart.
+  USD := TMoney.FromLocale(10.00, 1033);
+  CAD := TMoney.FromLocale(10.00, 4105);
+
+  CheckEqualsString(USD.FormatSettings.CurrencyString,
+    CAD.FormatSettings.CurrencyString,
+    'this test only means anything while both locales share a symbol');
+  CheckEqualsString('USD', USD.CurrencyCode);
+  CheckEqualsString('CAD', CAD.CurrencyCode);
+
+  try
+    USD.Add(CAD);
+    Fail('adding CAD to USD should raise ECurrencyCodeMismatch');
+  except
+    on E: ECurrencyCodeMismatch do
+      ; // expected
+  end;
+
+  CheckFalse(USD.Equals(CAD), 'USD 10 and CAD 10 are not equal');
+end;
+
+procedure TestTMoney.TestCurrencyCodeSurvivesArithmetic;
+var
+  GBP : IMoney;
+  Shares : IList<IMoney>;
+  Ratios : array[0..1] of integer;
+begin
+  GBP := TMoney.FromLocale(10.00, 2057);
+
+  CheckEqualsString('GBP', GBP.Multiply(2).CurrencyCode, 'Multiply');
+  CheckEqualsString('GBP', GBP.Add(TMoney.FromLocale(5.00, 2057)).CurrencyCode, 'Add');
+
+  Ratios[0] := 1;
+  Ratios[1] := 1;
+  Shares := GBP.Allocate(Ratios);
+  CheckEqualsString('GBP', Shares.Items[0].CurrencyCode, 'Allocate');
+end;
+
+procedure TestTMoney.TestChangeCurrencyCarriesTargetCode;
+var
+  USD : IMoney;
+  JPY : IMoney;
+begin
+  USD := TMoney.FromLocale(10.00, 1033);
+  JPY := TMoney.ChangeCurrency(USD, TFormatSettings.Create(1041), 150,
+    TMoney.CurrencyCodeOfLocale(1041));
+
+  CheckEqualsString('JPY', JPY.CurrencyCode);
+  CheckEquals(Int64(1500), JPY.Amount);
 end;
 
 procedure TestTMoney.TestChangeCurrencyRescalesMinorUnits;
