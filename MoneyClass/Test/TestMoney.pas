@@ -14,6 +14,18 @@ interface
 uses
   TestFramework, SysUtils, Money;
 
+const
+  // The tests pin themselves to explicit locale ids so results do not depend on
+  // the regional settings of whatever machine runs them. Nothing here should
+  // read the user default.
+  LCID_US = 1033;
+  LCID_GB = 2057;
+  LCID_FR = 1036;
+  LCID_DE = 1031;
+  LCID_SE = 1053;
+  LCID_JP = 1041;
+  LCID_CA = 4105;
+
 type
   // Test methods for class TMoney
   TestTMoney = class(TTestCase)
@@ -101,7 +113,7 @@ uses
 
 procedure TestTMoney.SetUp;
 begin
-  FMoney := TMoney.FromDefaultLocale(45.34);
+  FMoney := TMoney.FromLocale(45.34, LCID_US);
 end;
 
 procedure TestTMoney.TestToString;
@@ -117,7 +129,7 @@ procedure TestTMoney.TestAdd;
 var
   ReturnValue: IMoney;
 begin
-  ReturnValue := FMoney.Add(TMoney.FromDefaultLocale(50.29));
+  ReturnValue := FMoney.Add(TMoney.FromLocale(50.29, LCID_US));
   Check(ReturnValue.Amount = 9563);
 end;
 
@@ -126,7 +138,7 @@ var
   ReturnValue: IMoney;
   Amount: IMoney;
 begin
-  Amount := TMoney.FromDefaultLocale(30.03);
+  Amount := TMoney.FromLocale(30.03, LCID_US);
   ReturnValue := FMoney.Subtract(Amount);
   Check(ReturnValue.Amount = 1531);
 end;
@@ -162,8 +174,8 @@ var
   FromMoney : IMoney;
   ToMoney : IMoney;
 begin
-  FromMoney := TMoney.FromLocale(36.48, 2057);
-  ToMoney := TMoney.ChangeCurrency(FromMoney, TFormatSettings.Create, 1.58, 'USD');
+  FromMoney := TMoney.FromLocale(36.48, LCID_GB);
+  ToMoney := TMoney.ChangeCurrency(FromMoney, TFormatSettings.Create(LCID_US), 1.58, TMoney.CurrencyCodeOfLocale(LCID_US));
   //57.6384
   //5764
   CheckEquals(5764, ToMoney.Amount);
@@ -175,8 +187,8 @@ var
   FromMoney : IMoney;
   ToMoney : IMoney;
 begin
-  FromMoney := TMoney.FromDefaultLocale(36.48);
-  ToMoney := TMoney.ChangeCurrency(FromMoney, TFormatSettings.Create(2057), 1.58, TMoney.CurrencyCodeOfLocale(2057));
+  FromMoney := TMoney.FromLocale(36.48, LCID_US);
+  ToMoney := TMoney.ChangeCurrency(FromMoney, TFormatSettings.Create(LCID_GB), 1.58, TMoney.CurrencyCodeOfLocale(LCID_GB));
   CheckEquals(5764, ToMoney.Amount);
   CheckEqualsString('£57.64', ToMoney.ToString);
 end;
@@ -186,17 +198,17 @@ var
   ReturnValue : boolean;
   aMoney : IMoney;
 begin
-  aMoney := TMoney.FromDefaultLocale(45.34);
+  aMoney := TMoney.FromLocale(45.34, LCID_US);
   ReturnValue := FMoney.Equals(aMoney);
   Check(ReturnValue);
 
   aMoney := nil;
-  aMoney := TMoney.FromDefaultLocale(5.27);
+  aMoney := TMoney.FromLocale(5.27, LCID_US);
   ReturnValue := FMoney.Equals(aMoney);
   CheckFalse(ReturnValue);
 
   aMoney := nil;
-  aMoney := TMoney.FromLocale(5.27, 2057);
+  aMoney := TMoney.FromLocale(5.27, LCID_GB);
   ReturnValue := FMoney.Equals(aMoney);
 //  CheckException(ReturnValue);
 
@@ -211,12 +223,12 @@ begin
   // 135,102.13 colones at 492.57 CRC to the dollar is $274.28. Built from an
   // explicit TFormatSettings rather than a locale id so the test does not
   // depend on which locales the machine has.
-  CRCSettings := TFormatSettings.Create;
+  CRCSettings := TFormatSettings.Create(LCID_US);
   CRCSettings.CurrencyString := 'CRC';
   CRCSettings.CurrencyDecimals := 2;
 
   CRC := TMoney.Create(135102.13, 'CRC', CRCSettings);
-  USD := TMoney.ChangeCurrency(CRC, TFormatSettings.Create, 1 / 492.57, 'USD');
+  USD := TMoney.ChangeCurrency(CRC, TFormatSettings.Create(LCID_US), 1 / 492.57, TMoney.CurrencyCodeOfLocale(LCID_US));
 
   CheckEquals(Int64(27428), USD.Amount);
 end;
@@ -226,8 +238,8 @@ begin
   // 1.239 is 123.9 cents. Truncating gave 123, quietly discarding most of a
   // cent, while Multiply already rounded - so the same value built two ways
   // disagreed.
-  CheckEquals(Int64(124), TMoney.FromDefaultLocale(1.239).Amount);
-  CheckEquals(Int64(-124), TMoney.FromDefaultLocale(-1.239).Amount);
+  CheckEquals(Int64(124), TMoney.FromLocale(1.239, LCID_US).Amount);
+  CheckEquals(Int64(-124), TMoney.FromLocale(-1.239, LCID_US).Amount);
 end;
 
 procedure TestTMoney.TestRejectsUnsupportedCurrencyDecimals;
@@ -237,7 +249,7 @@ var
 begin
   // CurrencyDecimals is a Byte and Windows lets it run past the factor table.
   // The old code read whatever followed the table in memory and scaled by it.
-  Odd := TFormatSettings.Create;
+  Odd := TFormatSettings.Create(LCID_US);
   Odd.CurrencyDecimals := 9;
   try
     M := TMoney.Create(1.00, 'USD', Odd);
@@ -250,9 +262,9 @@ end;
 
 procedure TestTMoney.TestFromLocaleCarriesIsoCode;
 begin
-  CheckEqualsString('USD', TMoney.FromLocale(45.34, 1033).CurrencyCode);
-  CheckEqualsString('GBP', TMoney.FromLocale(45.34, 2057).CurrencyCode);
-  CheckEqualsString('JPY', TMoney.FromLocale(45, 1041).CurrencyCode);
+  CheckEqualsString('USD', TMoney.FromLocale(45.34, LCID_US).CurrencyCode);
+  CheckEqualsString('GBP', TMoney.FromLocale(45.34, LCID_GB).CurrencyCode);
+  CheckEqualsString('JPY', TMoney.FromLocale(45, LCID_JP).CurrencyCode);
 end;
 
 procedure TestTMoney.TestCurrencyCodeSeparatesDollarCurrencies;
@@ -262,8 +274,8 @@ var
 begin
   // en-US and en-CA are indistinguishable by symbol ('$'), decimals (2) and
   // CurrencyFormat (0). The ISO code is the only thing that tells them apart.
-  USD := TMoney.FromLocale(10.00, 1033);
-  CAD := TMoney.FromLocale(10.00, 4105);
+  USD := TMoney.FromLocale(10.00, LCID_US);
+  CAD := TMoney.FromLocale(10.00, LCID_CA);
 
   CheckEqualsString(USD.FormatSettings.CurrencyString,
     CAD.FormatSettings.CurrencyString,
@@ -288,10 +300,10 @@ var
   Shares : IList<IMoney>;
   Ratios : array[0..1] of integer;
 begin
-  GBP := TMoney.FromLocale(10.00, 2057);
+  GBP := TMoney.FromLocale(10.00, LCID_GB);
 
   CheckEqualsString('GBP', GBP.Multiply(2).CurrencyCode, 'Multiply');
-  CheckEqualsString('GBP', GBP.Add(TMoney.FromLocale(5.00, 2057)).CurrencyCode, 'Add');
+  CheckEqualsString('GBP', GBP.Add(TMoney.FromLocale(5.00, LCID_GB)).CurrencyCode, 'Add');
 
   Ratios[0] := 1;
   Ratios[1] := 1;
@@ -304,9 +316,9 @@ var
   USD : IMoney;
   JPY : IMoney;
 begin
-  USD := TMoney.FromLocale(10.00, 1033);
-  JPY := TMoney.ChangeCurrency(USD, TFormatSettings.Create(1041), 150,
-    TMoney.CurrencyCodeOfLocale(1041));
+  USD := TMoney.FromLocale(10.00, LCID_US);
+  JPY := TMoney.ChangeCurrency(USD, TFormatSettings.Create(LCID_JP), 150,
+    TMoney.CurrencyCodeOfLocale(LCID_JP));
 
   CheckEqualsString('JPY', JPY.CurrencyCode);
   CheckEquals(Int64(1500), JPY.Amount);
@@ -319,7 +331,7 @@ begin
   // The code is the currency identity now, so allowing an empty one would put
   // us straight back to TFormatSettings, which cannot tell USD from CAD.
   try
-    M := TMoney.Create(1.00, '', TFormatSettings.Create);
+    M := TMoney.Create(1.00, '', TFormatSettings.Create(LCID_US));
     Fail(Format('an empty currency code should raise, got %d', [M.Amount]));
   except
     on E: EArgumentException do
@@ -334,8 +346,8 @@ var
 begin
   // USD carries two minor-unit digits, JPY none, so the raw amounts are on
   // different scales. $10.00 at 150 JPY/USD is 1500 yen, not 150000.
-  USD := TMoney.FromDefaultLocale(10.00);
-  JPY := TMoney.ChangeCurrency(USD, TFormatSettings.Create(1041), 150, TMoney.CurrencyCodeOfLocale(1041));
+  USD := TMoney.FromLocale(10.00, LCID_US);
+  JPY := TMoney.ChangeCurrency(USD, TFormatSettings.Create(LCID_JP), 150, TMoney.CurrencyCodeOfLocale(LCID_JP));
   CheckEquals(0, JPY.FormatSettings.CurrencyDecimals, 'JPY should have no minor unit');
   CheckEquals(1500, JPY.Amount);
 end;
@@ -346,7 +358,7 @@ var
 begin
   // CurrencyFormat is 0 for both en-US and en-GB, so the old guard compared
   // equal and let this addition through.
-  GBP := TMoney.FromLocale(10.00, 2057);
+  GBP := TMoney.FromLocale(10.00, LCID_GB);
   try
     FMoney.Add(GBP);
     Fail('Adding GBP to USD should raise ECurrencyCodeMismatch');
@@ -364,7 +376,7 @@ var
 begin
   // -101 cents split evenly. Truncating division handed out -50 and -50 and
   // quietly dropped a cent; flooring hands out -50 and -51.
-  Debt := TMoney.FromDefaultLocale(-1.01);
+  Debt := TMoney.FromLocale(-1.01, LCID_US);
   Ratios[0] := 1;
   Ratios[1] := 1;
 
@@ -413,7 +425,7 @@ var
 begin
   // $1,000,000.00 is 100,000,000 cents; times ratio 30 is 3e9, which overflowed
   // the old 32-bit intermediate and produced negative shares.
-  Big := TMoney.FromDefaultLocale(1000000.00);
+  Big := TMoney.FromLocale(1000000.00, LCID_US);
   Ratios[0] := 30;
   Ratios[1] := 70;
 
@@ -428,7 +440,7 @@ var
   Big : IMoney;
 begin
   // 1e9 cents times 3 is 3e9, past what the old Integer amount could hold.
-  Big := TMoney.FromDefaultLocale(10000000.00);
+  Big := TMoney.FromLocale(10000000.00, LCID_US);
   CheckEquals(Int64(3000000000), Big.Multiply(3).Amount);
 end;
 
@@ -436,7 +448,7 @@ end;
 
 procedure TestBritishMoney.SetUp;
 begin
-  FMoney := TMoney.FromLocale(45.34, 2057);
+  FMoney := TMoney.FromLocale(45.34, LCID_GB);
 end;
 
 procedure TestBritishMoney.TestToString;
@@ -451,7 +463,7 @@ end;
 
 procedure TestFrenchMoney.SetUp;
 begin
-  FMoney := TMoney.FromLocale(45.34, 1036);
+  FMoney := TMoney.FromLocale(45.34, LCID_FR);
 end;
 
 procedure TestFrenchMoney.TestToString;
@@ -466,7 +478,7 @@ end;
 
 procedure TestGermanMoney.SetUp;
 begin
-  FMoney := TMoney.FromLocale(45.34, 1031);
+  FMoney := TMoney.FromLocale(45.34, LCID_DE);
 end;
 
 procedure TestGermanMoney.TestToString;
@@ -481,7 +493,7 @@ end;
 
 procedure TestSwedishMoney.SetUp;
 begin
-  FMoney := TMoney.FromLocale(45.34, 1053);
+  FMoney := TMoney.FromLocale(45.34, LCID_SE);
 end;
 
 procedure TestSwedishMoney.TestToString;
@@ -496,7 +508,7 @@ end;
 
 procedure TestAllocatingMoney.SetUp;
 begin
-  FMoney := TMoney.FromDefaultLocale(0.05);
+  FMoney := TMoney.FromLocale(0.05, LCID_US);
 end;
 
 procedure TestAllocatingMoney.TestAllocate3070;
